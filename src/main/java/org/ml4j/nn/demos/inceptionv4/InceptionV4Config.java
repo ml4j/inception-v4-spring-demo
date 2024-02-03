@@ -4,6 +4,7 @@ import java.io.IOException;
 
 import org.ml4j.MatrixFactory;
 import org.ml4j.jblas.JBlasRowMajorMatrixFactory;
+import org.ml4j.jblas.JBlasRowMajorMatrixFactoryOptimised;
 import org.ml4j.nd4j.Nd4jRowMajorMatrixFactory;
 import org.ml4j.nn.activationfunctions.factories.DifferentiableActivationFunctionFactory;
 import org.ml4j.nn.axons.factories.AxonsFactory;
@@ -19,38 +20,48 @@ import org.ml4j.nn.sessions.factories.DefaultSessionFactory;
 import org.ml4j.nn.sessions.factories.DefaultSessionFactoryImpl;
 import org.ml4j.nn.supervised.DefaultSupervisedFeedForwardNeuralNetworkFactory;
 import org.ml4j.nn.supervised.SupervisedFeedForwardNeuralNetworkFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class InceptionV4Config {
 
 	@Bean
-	MatrixFactory matrixFactory() {
-		return new JBlasRowMajorMatrixFactory();
+	@Conditional(OSX_AArch64Condition.class)
+	MatrixFactory matrixFactoryNd4j() {
+		return new Nd4jRowMajorMatrixFactory();
+	}
+
+
+	@Bean
+	@Conditional(NonOSX_AArch64Condition.class)
+	MatrixFactory matrixFactoryJBlasOptimised() {
+		return new JBlasRowMajorMatrixFactoryOptimised();
 	}
 
 	@Bean
-	AxonsFactory axonsFactory() {
-		return new DefaultAxonsFactoryImpl(matrixFactory());
+	AxonsFactory axonsFactory(@Autowired MatrixFactory matrixFactory) {
+		return new DefaultAxonsFactoryImpl(matrixFactory);
 	}
 	
 	@Bean
-	DirectedComponentFactory directedComponentFactory() {
-		return new DefaultDirectedComponentFactoryImpl(matrixFactory(), axonsFactory(), activationFunctionFactory(), 
-				directedComponentsContext());
+	DirectedComponentFactory directedComponentFactory(@Autowired MatrixFactory matrixFactory) {
+		return new DefaultDirectedComponentFactoryImpl(matrixFactory, axonsFactory(matrixFactory), activationFunctionFactory(),
+				directedComponentsContext(matrixFactory));
 	}
 	
 	@Bean
-	DirectedComponentsContext directedComponentsContext() {
-		return new DirectedComponentsContextImpl(matrixFactory(), false);
+	DirectedComponentsContext directedComponentsContext(@Autowired MatrixFactory matrixFactory) {
+		return new DirectedComponentsContextImpl(matrixFactory, false);
 	}
 
 	@Bean
-	DefaultSessionFactory sessionFactory() {
-		return new DefaultSessionFactoryImpl(matrixFactory(), 
-				directedComponentFactory(), null,  // No DirectedLayerFactory needed for this demo.
-				supervisedFeedForwardNeuralNetworkFactory(), directedComponentsContext());
+	DefaultSessionFactory sessionFactory(@Autowired MatrixFactory matrixFactory) {
+		return new DefaultSessionFactoryImpl(matrixFactory,
+				directedComponentFactory(matrixFactory), null,  // No DirectedLayerFactory needed for this demo.
+				supervisedFeedForwardNeuralNetworkFactory(matrixFactory), directedComponentsContext(matrixFactory));
 	}
 
 	@Bean
@@ -59,13 +70,13 @@ public class InceptionV4Config {
 	}
 
 	@Bean
-	SupervisedFeedForwardNeuralNetworkFactory supervisedFeedForwardNeuralNetworkFactory() {
-		return new DefaultSupervisedFeedForwardNeuralNetworkFactory(directedComponentFactory());
+	SupervisedFeedForwardNeuralNetworkFactory supervisedFeedForwardNeuralNetworkFactory(@Autowired MatrixFactory matrixFactory) {
+		return new DefaultSupervisedFeedForwardNeuralNetworkFactory(directedComponentFactory(matrixFactory));
 	}
 	
 	@Bean
-	InceptionV4Factory inceptionV4Factory() throws IOException {
-		return new DefaultInceptionV4Factory(sessionFactory(), matrixFactory(), 
+	InceptionV4Factory inceptionV4Factory(@Autowired MatrixFactory matrixFactory) throws IOException {
+		return new DefaultInceptionV4Factory(sessionFactory(matrixFactory), matrixFactory,
 				InceptionV4Demo.class.getClassLoader());
 	}
 }
